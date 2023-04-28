@@ -6,6 +6,7 @@ import { createInvoice } from '../../utils/pdfkit.js'
 import { validationCoupon } from '../coupon/coupon.controller.js'
 import sendEmail from '../../utils/sendEmail.js'
 import { payment } from '../../utils/payment.js'
+import Stripe from 'stripe'
 
 export const createOrder = async (req, res, next) => {
   const userId = req.user._id
@@ -204,4 +205,141 @@ export const cancelOrder = async (req, res, next) => {
   }
 }
 
+export const webHook = async (req, res, next) => {
+  const stripe = new Stripe(process.env.STRIP_SECRET_KEY)
 
+  // This is your Stripe CLI webhook secret for testing your endpoint locally.
+  const endpointSecret = 'whsec_uCbGwtPv8ZR7lCiFoJIYkil53mWznLDB'
+
+  const sig = req.headers['stripe-signature']
+
+  let event
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret)
+  } catch (err) {
+    res.status(400).send(`Webhook Error: ${err.message}`)
+    return
+  }
+  const { orderId } = event.data.object.metadata
+  if (event.type == 'checkout.session.completed') {
+    await orderModel.findByIdAndUpdate(orderId, {
+      orderStatus: 'confirmed',
+    })
+    return res.status(200).json({ message: 'Payment successed' })
+  }
+  await orderModel.findByIdAndUpdate(orderId, {
+    orderStatus: 'payment failed',
+  })
+  return res.status(200).json({ message: 'Payment failed' })
+}
+
+// {
+//   "id": "evt_1N1ugkKK3qD4Euati00qmlfs",
+//   "object": "event",
+//   "api_version": "2022-11-15",
+//   "created": 1682701350,
+//   "data": {
+//     "object": {
+//       "id": "cs_test_b1VLjrCqzFCTosB1ubqbIFY6UF76xW2aUGnGpvytcdtCeNX6lAbdQ4PIfN",
+//       "object": "checkout.session",
+//       "after_expiration": null,
+//       "allow_promotion_codes": null,
+//       "amount_subtotal": 140000,
+//       "amount_total": 140000,
+//       "automatic_tax": {
+//         "enabled": false,
+//         "status": null
+//       },
+//       "billing_address_collection": null,
+//       "cancel_url": "http://localhost:3000/cancel?orderId=644bfc0db6896e496c1da46c",
+//       "client_reference_id": null,
+//       "consent": null,
+//       "consent_collection": null,
+//       "created": 1682701327,
+//       "currency": "egp",
+//       "currency_conversion": null,
+//       "custom_fields": [
+//       ],
+//       "custom_text": {
+//         "shipping_address": null,
+//         "submit": null
+//       },
+//       "customer": null,
+//       "customer_creation": "if_required",
+//       "customer_details": {
+//         "address": {
+//           "city": null,
+//           "country": "EG",
+//           "line1": null,
+//           "line2": null,
+//           "postal_code": null,
+//           "state": null
+//         },
+//         "email": "amiraezaatroute4@gmail.com",
+//         "name": "amira ezaat ewis",
+//         "phone": null,
+//         "tax_exempt": "none",
+//         "tax_ids": [
+//         ]
+//       },
+//       "customer_email": "amiraezaatroute4@gmail.com",
+//       "expires_at": 1682787726,
+//       "invoice": null,
+//       "invoice_creation": {
+//         "enabled": false,
+//         "invoice_data": {
+//           "account_tax_ids": null,
+//           "custom_fields": null,
+//           "description": null,
+//           "footer": null,
+//           "metadata": {
+//           },
+//           "rendering_options": null
+//         }
+//       },
+//       "livemode": false,
+//       "locale": null,
+//       "metadata": {
+//         "orderId": "644bfc0db6896e496c1da46c"
+//       },
+//       "mode": "payment",
+//       "payment_intent": "pi_3N1ugjKK3qD4Euat1cG6743U",
+//       "payment_link": null,
+//       "payment_method_collection": "always",
+//       "payment_method_options": {
+//       },
+//       "payment_method_types": [
+//         "card"
+//       ],
+//       "payment_status": "paid",
+//       "phone_number_collection": {
+//         "enabled": false
+//       },
+//       "recovered_from": null,
+//       "setup_intent": null,
+//       "shipping_address_collection": null,
+//       "shipping_cost": null,
+//       "shipping_details": null,
+//       "shipping_options": [
+//       ],
+//       "status": "complete",
+//       "submit_type": null,
+//       "subscription": null,
+//       "success_url": "http://localhost:3000/success?orderId=644bfc0db6896e496c1da46c",
+//       "total_details": {
+//         "amount_discount": 0,
+//         "amount_shipping": 0,
+//         "amount_tax": 0
+//       },
+//       "url": null
+//     }
+//   },
+//   "livemode": false,
+//   "pending_webhooks": 4,
+//   "request": {
+//     "id": null,
+//     "idempotency_key": null
+//   },
+//   "type": "checkout.session.completed"
+// }
